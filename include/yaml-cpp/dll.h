@@ -30,4 +30,12 @@
 #define YAML_CPP_API
 #endif  // YAML_CPP_DLL
 
+
+//Modified by Ben S/Modit3D for MSVS2019 compatibility. For earlier versions of MSVS you may need to change dll to lib in project settings.
+#ifdef _MSC_VER
+	#undef YAML_CPP_API
+	#define YAML_CPP_API
+#endif
+
+
 #endif  // DLL_H_62B23520_7C8E_11DE_8A39_0800200C9A66

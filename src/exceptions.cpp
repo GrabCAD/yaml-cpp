@@ -2,11 +2,16 @@
 
 // This is here for compatibility with older versions of Visual Studio
 // which don't support noexcept
-#if defined(_MSC_VER) && _MSC_VER < 1900
-    #define YAML_CPP_NOEXCEPT _NOEXCEPT
+#ifdef _MSC_VER
+	#if _MSC_VER < 1900
+	    #define YAML_CPP_NOEXCEPT _NOEXCEPT
+	#else
+	    #define YAML_CPP_NOEXCEPT noexcept
+	#endif
 #else
     #define YAML_CPP_NOEXCEPT noexcept
 #endif
+//Modified by Ben S/Modit3D for MSVS2019 compatibility.
 
 namespace YAML {
 
