@@ -16,7 +16,7 @@ Emitter::Emitter() : m_pState(new EmitterState), m_stream{} {}
 Emitter::Emitter(std::ostream& stream)
     : m_pState(new EmitterState), m_stream(stream) {}
 
-Emitter::~Emitter() {}
+Emitter::~Emitter() = default;
 
 const char* Emitter::c_str() const { return m_stream.str(); }
 
@@ -47,6 +47,10 @@ bool Emitter::SetBoolFormat(EMITTER_MANIP value) {
   if (m_pState->SetBoolLengthFormat(value, FmtScope::Global))
     ok = true;
   return ok;
+}
+
+bool Emitter::SetNullFormat(EMITTER_MANIP value) {
+  return m_pState->SetNullFormat(value, FmtScope::Global);
 }
 
 bool Emitter::SetIntBase(EMITTER_MANIP value) {
@@ -84,6 +88,10 @@ bool Emitter::SetFloatPrecision(std::size_t n) {
 
 bool Emitter::SetDoublePrecision(std::size_t n) {
   return m_pState->SetDoublePrecision(n, FmtScope::Global);
+}
+
+void Emitter::RestoreGlobalModifiedSettings() {
+  m_pState->RestoreGlobalModifiedSettings();
 }
 
 // SetLocalValue
@@ -556,6 +564,8 @@ void Emitter::BlockMapPrepareLongKey(EmitterNodeType::value child) {
       break;
     case EmitterNodeType::BlockSeq:
     case EmitterNodeType::BlockMap:
+      if (m_pState->HasBegunContent())
+        m_stream << "\n";
       break;
   }
 }
@@ -579,8 +589,12 @@ void Emitter::BlockMapPrepareLongKeyValue(EmitterNodeType::value child) {
     case EmitterNodeType::Scalar:
     case EmitterNodeType::FlowSeq:
     case EmitterNodeType::FlowMap:
+      SpaceOrIndentTo(true, curIndent + 1);
+      break;
     case EmitterNodeType::BlockSeq:
     case EmitterNodeType::BlockMap:
+      if (m_pState->HasBegunContent())
+        m_stream << "\n";
       SpaceOrIndentTo(true, curIndent + 1);
       break;
   }
@@ -672,14 +686,27 @@ void Emitter::StartedScalar() { m_pState->StartedScalar(); }
 // *******************************************************************************************
 // overloads of Write
 
+StringEscaping::value GetStringEscapingStyle(const EMITTER_MANIP emitterManip) {
+  switch (emitterManip) {
+    case EscapeNonAscii:
+      return StringEscaping::NonAscii;
+    case EscapeAsJson:
+      return StringEscaping::JSON;
+    default:
+      return StringEscaping::None;
+      break;
+  }
+}
+
 Emitter& Emitter::Write(const std::string& str) {
   if (!good())
     return *this;
 
-  const bool escapeNonAscii = m_pState->GetOutputCharset() == EscapeNonAscii;
+  StringEscaping::value stringEscaping = GetStringEscapingStyle(m_pState->GetOutputCharset());
+
   const StringFormat::value strFormat =
       Utils::ComputeStringFormat(str, m_pState->GetStringFormat(),
-                                 m_pState->CurGroupFlowType(), escapeNonAscii);
+                                 m_pState->CurGroupFlowType(), stringEscaping == StringEscaping::NonAscii);
 
   if (strFormat == StringFormat::Literal)
     m_pState->SetMapKeyFormat(YAML::LongKey, FmtScope::Local);
@@ -694,7 +721,7 @@ Emitter& Emitter::Write(const std::string& str) {
       Utils::WriteSingleQuotedString(m_stream, str);
       break;
     case StringFormat::DoubleQuoted:
-      Utils::WriteDoubleQuotedString(m_stream, str, escapeNonAscii);
+      Utils::WriteDoubleQuotedString(m_stream, str, stringEscaping);
       break;
     case StringFormat::Literal:
       Utils::WriteLiteralString(m_stream, str,
@@ -764,6 +791,21 @@ const char* Emitter::ComputeFullBoolName(bool b) const {
                          // these answers
 }
 
+const char* Emitter::ComputeNullName() const {
+  switch (m_pState->GetNullFormat()) {
+    case LowerNull:
+      return "null";
+    case UpperNull:
+      return "NULL";
+    case CamelNull:
+      return "Null";
+    case TildeNull:
+      // fallthrough
+    default:
+      return "~";
+  }
+}
+
 Emitter& Emitter::Write(bool b) {
   if (!good())
     return *this;
@@ -785,8 +827,10 @@ Emitter& Emitter::Write(char ch) {
   if (!good())
     return *this;
 
+
+
   PrepareNode(EmitterNodeType::Scalar);
-  Utils::WriteChar(m_stream, ch);
+  Utils::WriteChar(m_stream, ch, GetStringEscapingStyle(m_pState->GetOutputCharset()));
   StartedScalar();
 
   return *this;
@@ -887,7 +931,7 @@ Emitter& Emitter::Write(const _Null& /*null*/) {
 
   PrepareNode(EmitterNodeType::Scalar);
 
-  m_stream << "~";
+  m_stream << ComputeNullName();
 
   StartedScalar();
 
